@@ -1,0 +1,19 @@
+version: "3.9"
+services:
+  controller:
+    image: paravirtualtishu/controller:1.2
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+  redis:
+    image: redis:7.0.5-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+    command: |
+      redis-server
+        --save 60 1
+        --loglevel warning
