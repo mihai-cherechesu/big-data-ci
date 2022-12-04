@@ -5,7 +5,8 @@ on:
     branches:
       - 'main'
     paths:
-      - parser
+      - 'parser/**'
+      - '!parser/test.py'
 
 jobs:
   docker:
@@ -27,5 +28,7 @@ jobs:
         name: Build and push
         uses: docker/build-push-action@v3
         with:
+          context: "{{defaultContext}}:parser"
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: paravirtualtishu/parser:latest
