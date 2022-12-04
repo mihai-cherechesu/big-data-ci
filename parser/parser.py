@@ -14,7 +14,7 @@ class Parser:
 
 
 def main():
-    print("initializing parser")
+    print("initializing parser...")
     parser = Parser()
 
 
