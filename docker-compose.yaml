@@ -2,11 +2,14 @@ version: "3.9"
 services:
   controller:
     image: paravirtualtishu/controller:latest
+    pull_policy: always
     ports:
       - "8081:8081"
     depends_on:
       redis:
         condition: service_healthy
+      # parser:
+      #   condition: service_healthy
   redis:
     image: redis:7.0.5-alpine
     ports:
@@ -17,3 +20,11 @@ services:
       redis-server
         --save 60 1
         --loglevel warning
+  parser:
+    image: paravirtualtishu/parser:latest
+    pull_policy: always
+    ports:
+      - "8082:8082"
+    # healthcheck:
+    #   test: ["CMD-SHELL", ""]
+

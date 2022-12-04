@@ -1,5 +1,7 @@
 FROM python:3.9-alpine
 
+RUN apk add --update curl
+
 WORKDIR /app
 
 COPY parser.py ./
