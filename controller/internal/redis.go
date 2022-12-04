@@ -38,7 +38,7 @@ func CheckRequestLimit(addr string, client *redis.Client) error {
 		client.Incr(addr)
 
 	} else {
-		return errors.New("limit_reached")
+		return errors.New("LIMIT_REACHED")
 	}
 
 	return nil
