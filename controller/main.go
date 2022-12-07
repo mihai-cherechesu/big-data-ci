@@ -30,12 +30,14 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	err = json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		log.Fatalf("could not decode body, %v", err)
+		log.Printf("could not decode body, %v", err)
 	}
 
 	for k, _ := range data {
 		fmt.Printf("%s\n", k)
 	}
+
+	internal.TestTopologicalSort()
 }
 
 func main() {
