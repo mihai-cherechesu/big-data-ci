@@ -48,6 +48,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: move it into the main class
 	s := internal.NewScheduler(20)
 	s.Schedule(p)
 }

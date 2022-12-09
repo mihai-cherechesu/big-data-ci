@@ -8,6 +8,11 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    environment:
+      - DOCKER_API_VERSION=1.41
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
   redis:
     image: redis:7.0.5-alpine
     ports:

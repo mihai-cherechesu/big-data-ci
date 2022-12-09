@@ -1,10 +1,14 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
 	"time"
+
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
 )
 
 // A struct that represents the core scheduler for the CI system.
@@ -62,6 +66,20 @@ func runStage(stage string, done chan string) {
 }
 
 func (s *Scheduler) Schedule(p Pipeline) error {
+	docker, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		log.Fatalf("could not create docker client, %v", err)
+	}
+
+	containers, err := docker.ContainerList(context.Background(), types.ContainerListOptions{})
+	if err != nil {
+		panic(err)
+	}
+
+	for _, container := range containers {
+		fmt.Printf("%s %s\n", container.ID[:10], container.Image)
+	}
+
 	g := NewGraphFromStages(p.Stages)
 	layers := g.TopoSortedLayers()
 
@@ -81,10 +99,10 @@ func (s *Scheduler) Schedule(p Pipeline) error {
 	if layersLen > 0 {
 		first = layers[0]
 	} else {
-		log.Fatal("there are no stage layers, recheck your pipeline")
+		log.Fatal("there are no stage layers, recheck your pipeline\n")
 	}
 
-	fmt.Printf("the first stage layer to be executed: %s", first)
+	fmt.Printf("the first stage layer to be executed: %s\n", first)
 	for _, stage := range first {
 		fmt.Printf("starting stage %s\n", stage)
 		go runStage(stage, done)
