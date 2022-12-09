@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -33,11 +32,27 @@ type StageMeta struct {
 
 // A struct to represent the JSON schema
 type Pipeline struct {
+	// TODO: Add a pipeline unique name
+	// * Save all the pipelines associated to an ip in Redis
+	// * This will allow the CLI to inspect the current running pipelines (e.g. cili pipelines ls)
+	// * On each pipeline run, lookup redis to check if ip already has a pipeline with similar name
+	// * This also adds unicity to the containers (not sure if they can be created with the same name, check ContainerCreate)
+
 	Image string `json:"image" schema:"image"`
 
 	// Allow for any Stages keys
 	Stages map[string]StageMeta `json:"stages"`
 }
+
+// Used to create an enum for the state of stages
+type StageState int64
+
+// Enum for stage state
+const (
+	NotRunning StageState = iota
+	Running
+	Finished
+)
 
 // Creates a directed graph by iterating through
 // the list of dependencies found for each stage at "depends_on" key.
@@ -75,7 +90,7 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan s
 	// rand.Seed(time.Now().UnixNano())
 	// t := time.Duration(rand.Intn(6) + 5)
 
-	// fmt.Printf("sleep for %ds\n", t)
+	// log.Printf("sleep for %ds\n", t)
 	// time.Sleep(t * time.Second)
 	ctx := context.Background()
 
@@ -93,11 +108,14 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan s
 		Tty:   false,
 	}, nil, nil, nil, stage)
 
+	// Remove the container, similar to the flag --rm passed to docker run
+	defer docker.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{})
+
 	if err != nil {
 		log.Fatalf("could not create container for stage %s, %v\n", stage, err)
 	}
 
-	fmt.Printf("id for the %s container %s\n", stage, c.ID)
+	log.Printf("id for the %s container %s\n", stage, c.ID)
 
 	err = docker.ContainerStart(ctx, c.ID, types.ContainerStartOptions{})
 	if err != nil {
@@ -111,7 +129,7 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan s
 			log.Fatalf("could not wait for container, %v\n", err)
 		}
 	case status := <-statusCh:
-		fmt.Printf("received status code on wait channel %d\n", status.StatusCode)
+		log.Printf("received status code on wait channel %d\n", status.StatusCode)
 	}
 
 	// Write logs to STDOUT
@@ -122,15 +140,55 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan s
 
 	stdcopy.StdCopy(os.Stdout, os.Stderr, out)
 
-	// Remove container after it finishes
-	err = docker.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{})
-	if err != nil {
-		log.Fatalf("could not remove container %s for stage %s, %v\n", c.ID, stage, err)
-	}
-
 	// Send the stage name in the channel so the Scheduler can
 	// traverse the graph again and schedule new stages
 	doneCh <- stage
+}
+
+// Find next stages to run by traversing the stage layers.
+// This function is called after one dependency stage finishes
+func (s *Scheduler) findNextStages(p Pipeline, states map[string]StageState, layers [][]string) []string {
+	var nextStages []string
+
+	// The layers array is assured to have at least 2 elements
+	for i := 1; i < len(layers); i++ {
+		for _, stage := range layers[i] {
+			// Stages already running are skipped
+			if states[stage] == Running || states[stage] == Finished {
+				continue
+			}
+
+			// Iterate through the stage dependencies and check
+			// their statuses
+			allDone := true
+			for _, dep := range p.Stages[stage].DependsOn {
+				// If any stage dependency is in either NotRunning or Running states,
+				// the stage is not considered in the next run
+				if states[dep] == Running || states[dep] == NotRunning {
+					allDone = false
+					break
+				}
+			}
+
+			// Add the stage to the next run if dependencies finished
+			if allDone {
+				nextStages = append(nextStages, stage)
+			}
+		}
+	}
+
+	return nextStages
+}
+
+// Check if all stages have finished
+func (s *Scheduler) checkAllFinished(states map[string]StageState) bool {
+	for _, state := range states {
+		if state == NotRunning || state == Running {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (s *Scheduler) Schedule(p Pipeline) error {
@@ -145,19 +203,26 @@ func (s *Scheduler) Schedule(p Pipeline) error {
 	}
 
 	for _, container := range containers {
-		fmt.Printf("%s %s\n", container.ID[:10], container.Image)
+		log.Printf("%s %s\n", container.ID[:10], container.Image)
 	}
 
 	g := NewGraphFromStages(p.Stages)
 	layers := g.TopoSortedLayers()
 
 	for i, layer := range layers {
-		fmt.Printf("%d: %s\n", i, layer)
+		log.Printf("%d: %s\n", i, layer)
 	}
 
 	// Create a channel to receive the stage names that finished
 	// Buffered with a maximum capacity of maxContainers
 	doneCh := make(chan string, s.maxContainers)
+
+	// Create a map to hold the stages that finished
+	states := make(map[string]StageState)
+	// Initialize the map with false values for all stages
+	for stage := range p.Stages {
+		states[stage] = NotRunning
+	}
 
 	// Create a new slice to store the initial layer of stages to be executed
 	var first []string
@@ -170,22 +235,46 @@ func (s *Scheduler) Schedule(p Pipeline) error {
 		log.Fatal("there are no stage layers, recheck your pipeline\n")
 	}
 
-	fmt.Printf("the first stage layer to be executed: %s\n", first)
+	log.Printf("the first stage layer to be executed: %s\n", first)
 	// Run the first stage layer by creating a goroutine per stage
 	for _, stage := range first {
-		fmt.Printf("starting stage %s\n", stage)
+		log.Printf("starting stage %s\n", stage)
+		states[stage] = Running
 		go runStage(stage, p.Stages[stage], s.docker, doneCh)
 	}
 
 	for {
 		select {
 		case stage := <-doneCh:
-			fmt.Printf("stage %s is done\n", stage)
+			log.Printf("stage %s is done\n", stage)
+			// Mark the stage as done, so that the stage won't run again
+			states[stage] = Finished
+
+			// Check if all stages finished
+			if s.checkAllFinished(states) {
+				docker.Close()
+				log.Printf("pipeline finished successfully, closing the client\n")
+				return nil
+			}
+
+			// 1 layer means all stages have no dependencies
+			// > 1 layers means there are dependencies
+			// Look for stages starting with the second layer
+			if len(layers) > 1 {
+				log.Printf("looking for other stages to run...\n")
+				nextStages := s.findNextStages(p, states, layers)
+				log.Printf("found next stages: %s\n", nextStages)
+
+				// Run the next stages and set their status to Running
+				for _, n := range nextStages {
+					states[n] = Running
+					go runStage(n, p.Stages[n], s.docker, doneCh)
+				}
+			}
+
 		default:
-			fmt.Print("no stages done, waiting...\n")
+			// Waiting for any stage to finish
 			time.Sleep(1 * time.Second)
 		}
 	}
-
-	return nil
 }
