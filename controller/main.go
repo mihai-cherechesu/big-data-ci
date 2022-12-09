@@ -3,11 +3,9 @@ package main
 import (
 	"controller/internal"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/go-redis/redis"
 	"github.com/gorilla/schema"
@@ -34,29 +32,24 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	decoder := schema.NewDecoder()
 
 	// Create a new Pipeline struct
-	var s internal.Schema
+	var p internal.Pipeline
 
-	// Parse the request body and bind it to the Request struct
-	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+	// Parse the request body and bind it to the Pipeline struct
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		// If there is an error parsing the request body, return a 400 response
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	// Validate the Request struct
-	if err := decoder.Decode(&s, r.URL.Query()); err != nil {
-		// If there is an error validating the Request struct, return a 400 response
+	if err := decoder.Decode(&p, r.URL.Query()); err != nil {
+		// If there is an error validating the Pipeline struct, return a 400 response
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Create a new graph based on the pipeline stages
-	g := internal.NewGraphFromStages(s.Stages)
-
-	// Get the topologically sorted layers from the graph
-	for i, layer := range g.TopoSortedLayers() {
-		fmt.Printf("%d: %s\n", i, strings.Join(layer, ", "))
-	}
+	s := internal.NewScheduler(20)
+	s.Schedule(p)
 }
 
 func main() {

@@ -1,5 +1,15 @@
 package internal
 
+import "fmt"
+
+// A struct that represents the core scheduler for the CI system.
+// Configurations:
+// * maxContainers tells the scheduler the maximum number of running containers at a point in time.
+// * TBD
+type Scheduler struct {
+	maxContainers int
+}
+
 // Metadata for each stage. Must be an object
 // with the keys "script", "depends_on", and "artifacts"
 type StageMeta struct {
@@ -9,7 +19,7 @@ type StageMeta struct {
 }
 
 // A struct to represent the JSON schema
-type Schema struct {
+type Pipeline struct {
 	Image string `json:"image" schema:"image"`
 
 	// Allow for any Stages keys
@@ -17,7 +27,7 @@ type Schema struct {
 }
 
 func NewGraphFromStages(stages map[string]StageMeta) *Graph {
-	g := New()
+	g := NewGraph()
 
 	for k, v := range stages {
 		for _, dep := range v.DependsOn {
@@ -26,4 +36,22 @@ func NewGraphFromStages(stages map[string]StageMeta) *Graph {
 	}
 
 	return g
+}
+
+func NewScheduler(maxContainers int) *Scheduler {
+	s := &Scheduler{
+		maxContainers: maxContainers,
+	}
+
+	return s
+}
+
+func (s *Scheduler) Schedule(p Pipeline) error {
+	g := NewGraphFromStages(p.Stages)
+
+	for i, layer := range g.TopoSortedLayers() {
+		fmt.Printf("%d: %s\n", i, layer)
+	}
+
+	return nil
 }

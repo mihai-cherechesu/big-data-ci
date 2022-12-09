@@ -25,7 +25,7 @@ type Graph struct {
 	// Keep track of the nodes of the graph themselves.
 }
 
-func New() *Graph {
+func NewGraph() *Graph {
 	return &Graph{
 		dependencies: make(depmap),
 		dependents:   make(depmap),
