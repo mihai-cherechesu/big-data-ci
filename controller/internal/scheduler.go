@@ -1,6 +1,11 @@
 package internal
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+	"math/rand"
+	"time"
+)
 
 // A struct that represents the core scheduler for the CI system.
 // Configurations:
@@ -46,11 +51,53 @@ func NewScheduler(maxContainers int) *Scheduler {
 	return s
 }
 
+func runStage(stage string, done chan string) {
+	rand.Seed(time.Now().UnixNano())
+	t := time.Duration(rand.Intn(6) + 5)
+
+	fmt.Printf("sleep for %ds\n", t)
+	time.Sleep(t * time.Second)
+
+	done <- stage
+}
+
 func (s *Scheduler) Schedule(p Pipeline) error {
 	g := NewGraphFromStages(p.Stages)
+	layers := g.TopoSortedLayers()
 
-	for i, layer := range g.TopoSortedLayers() {
+	for i, layer := range layers {
 		fmt.Printf("%d: %s\n", i, layer)
+	}
+
+	// Create a channel to receive the stage names that finished
+	// Buffered with a maximum capacity of maxContainers
+	done := make(chan string, s.maxContainers)
+
+	// Create a new slice to store the initial layer of stages to be executed
+	var first []string
+	// Number of existing stage layers
+	layersLen := len(layers)
+
+	if layersLen > 0 {
+		first = layers[0]
+	} else {
+		log.Fatal("there are no stage layers, recheck your pipeline")
+	}
+
+	fmt.Printf("the first stage layer to be executed: %s", first)
+	for _, stage := range first {
+		fmt.Printf("starting stage %s\n", stage)
+		go runStage(stage, done)
+	}
+
+	for {
+		select {
+		case stage := <-done:
+			fmt.Printf("stage %s is done\n", stage)
+		default:
+			fmt.Print("no stages done, waiting...\n")
+			time.Sleep(1 * time.Second)
+		}
 	}
 
 	return nil
