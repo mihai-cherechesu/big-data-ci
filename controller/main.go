@@ -7,8 +7,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/go-redis/redis"
+	"github.com/gorilla/schema"
 )
 
 var (
@@ -18,26 +20,43 @@ var (
 func handler(w http.ResponseWriter, r *http.Request) {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		log.Fatalf("could not parse remote address, %v", err)
+		http.Error(w, "could not parse remote address, %v", http.StatusInternalServerError)
+		return
 	}
 
 	err = internal.CheckRequestLimit(ip, redisClient)
 	if err != nil {
-		log.Fatalf("requests limit reached, %v", err)
+		http.Error(w, "requests limit reached, %v", http.StatusTooManyRequests)
+		return
 	}
 
-	var data map[string]interface{}
+	// Create a new schema decoder
+	decoder := schema.NewDecoder()
 
-	err = json.NewDecoder(r.Body).Decode(&data)
-	if err != nil {
-		log.Printf("could not decode body, %v", err)
+	// Create a new Pipeline struct
+	var s internal.Schema
+
+	// Parse the request body and bind it to the Request struct
+	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+		// If there is an error parsing the request body, return a 400 response
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
 	}
 
-	for k, _ := range data {
-		fmt.Printf("%s\n", k)
+	// Validate the Request struct
+	if err := decoder.Decode(&s, r.URL.Query()); err != nil {
+		// If there is an error validating the Request struct, return a 400 response
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
 	}
 
-	internal.TestTopologicalSort()
+	// Create a new graph based on the pipeline stages
+	g := internal.NewGraphFromStages(s.Stages)
+
+	// Get the topologically sorted layers from the graph
+	for i, layer := range g.TopoSortedLayers() {
+		fmt.Printf("%d: %s\n", i, strings.Join(layer, ", "))
+	}
 }
 
 func main() {

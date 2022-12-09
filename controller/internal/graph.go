@@ -2,8 +2,6 @@ package internal
 
 import (
 	"errors"
-	"fmt"
-	"strings"
 )
 
 // A node in this graph is just a string, so a nodeset is a map whose
@@ -146,9 +144,7 @@ func (g *Graph) TopoSorted() []string {
 
 	allNodes := make([]string, 0, nodeCount)
 	for _, layer := range layers {
-		for _, node := range layer {
-			allNodes = append(allNodes, node)
-		}
+		allNodes = append(allNodes, layer...)
 	}
 
 	return allNodes
@@ -231,31 +227,4 @@ func addNodeToNodeset(dm depmap, key, node string) {
 		dm[key] = nodes
 	}
 	nodes[node] = struct{}{}
-}
-
-func TopologicalSort(deps map[string][]string) [][]string {
-	g := New()
-	for k, v := range deps {
-		for _, i := range v {
-			g.DependsOn(k, i)
-		}
-	}
-
-	for i, layer := range g.TopoSortedLayers() {
-		fmt.Printf("%d: %s\n", i, strings.Join(layer, ", "))
-	}
-
-	return g.TopoSortedLayers()
-}
-
-func TestTopologicalSort() {
-	g := New()
-	g.DependOn("test1", "build")
-	g.DependOn("test2", "build")
-	g.DependOn("test3", "test1")
-	g.DependOn("test3", "build")
-
-	for i, layer := range g.TopoSortedLayers() {
-		fmt.Printf("%d: %s\n", i, strings.Join(layer, ", "))
-	}
 }

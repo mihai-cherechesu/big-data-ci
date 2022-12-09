@@ -29,12 +29,12 @@ func CheckRequestLimit(addr string, client *redis.Client) error {
 	}
 
 	if val == "" {
-		err = client.Set(addr, 1, time.Second*30).Err()
+		err = client.Set(addr, 1, time.Second*10).Err()
 		if err != nil {
 			fmt.Printf("%v\n", err)
 		}
 
-	} else if v, err := strconv.ParseInt(val, 10, 64); err == nil && v < 10 {
+	} else if v, err := strconv.ParseInt(val, 10, 64); err == nil && v < 3 {
 		client.Incr(addr)
 
 	} else {
