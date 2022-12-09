@@ -13,6 +13,7 @@ import (
 
 var (
 	redisClient *redis.Client
+	scheduler   *internal.Scheduler
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -48,12 +49,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s := internal.NewScheduler(20)
-	s.Schedule(p)
+	scheduler.Schedule(p)
 }
 
 func main() {
 	redisClient = internal.InitRedisClient()
+	scheduler = internal.NewScheduler(20)
+
 	http.HandleFunc("/execute", handler)
 
 	err := http.ListenAndServe(":8081", nil)
