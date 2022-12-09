@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"time"
@@ -78,6 +79,14 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan s
 	// time.Sleep(t * time.Second)
 	ctx := context.Background()
 
+	reader, err := docker.ImagePull(ctx, "docker.io/library/alpine", types.ImagePullOptions{})
+	if err != nil {
+		panic(err)
+	}
+
+	defer reader.Close()
+	io.Copy(os.Stdout, reader)
+
 	c, err := docker.ContainerCreate(ctx, &container.Config{
 		Image: "alpine",
 		Cmd:   meta.Script,
@@ -125,7 +134,12 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan s
 }
 
 func (s *Scheduler) Schedule(p Pipeline) error {
-	containers, err := s.docker.ContainerList(context.Background(), types.ContainerListOptions{})
+	docker, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		log.Fatalf("could not create docker client, %v", err)
+	}
+
+	containers, err := docker.ContainerList(context.Background(), types.ContainerListOptions{})
 	if err != nil {
 		panic(err)
 	}
