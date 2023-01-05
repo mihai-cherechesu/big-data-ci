@@ -33,7 +33,9 @@ var stagesCmd = &cobra.Command{
 		fmt.Println("stages called")
 		id, _ := cmd.Flags().GetString("id")
 
-		resp, err := http.Get("http://localhost:8081/pipeline/" + id)
+		fmt.Printf("id: %s\n", id)
+
+		resp, err := http.Get("http://localhost:8081/pipelines/" + id)
 		if err != nil {
 			log.Fatalln(err)
 		}
