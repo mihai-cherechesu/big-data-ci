@@ -17,7 +17,9 @@ package cmd
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 
 	"github.com/spf13/cobra"
 )
@@ -29,29 +31,18 @@ var pipelinesCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("pipelines called")
-
-		db := initConn()
-
-		rows, err := db.Query("SELECT * FROM pipelines WHERE user_id = $1", "172.28.0.1")
+		resp, err := http.Get("http://localhost:8081/pipelines/")
 		if err != nil {
-			log.Fatalf("Error executing query: %q", err)
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var id int
-			var name string
-			err = rows.Scan(&id, &name)
-			if err != nil {
-				log.Fatalf("Error scanning rows: %q", err)
-			}
-			fmt.Printf("ID: %d, Name: %s\n", id, name)
+			log.Fatalln(err)
 		}
 
-		err = rows.Err()
+		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Fatalf("Error: %q", err)
+			log.Fatalln(err)
 		}
+
+		sb := string(body)
+		log.Printf("Response body %s\n", sb)
 	},
 }
 

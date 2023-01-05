@@ -20,6 +20,18 @@ var (
 	dbClient    *sql.DB
 )
 
+type PipelineRecord struct {
+	Id     string
+	UserId string
+}
+
+type StageRecord struct {
+	PipelineId string
+	Name       string
+	Message    string
+	Status     string
+}
+
 func handleExecute(w http.ResponseWriter, r *http.Request) {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -53,7 +65,7 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scheduler.Schedule(p, ip)
+	go scheduler.Schedule(p, ip)
 }
 
 func handlePipelines(w http.ResponseWriter, r *http.Request) {
@@ -72,20 +84,37 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 		}
 		defer rows.Close()
 
+		var pipelineRecords []PipelineRecord
+
 		for rows.Next() {
 			var id string
 			var userId string
+
 			err = rows.Scan(&id, &userId)
 			if err != nil {
 				log.Fatalf("Error scanning rows: %q", err)
 			}
 			fmt.Printf("ID: %s, Name: %s\n", id, userId)
+
+			r := PipelineRecord{
+				Id:     id,
+				UserId: userId,
+			}
+
+			pipelineRecords = append(pipelineRecords, r)
 		}
 
 		err = rows.Err()
 		if err != nil {
 			log.Fatalf("Error: %q", err)
 		}
+
+		response, err := json.Marshal(pipelineRecords)
+		if err != nil {
+			log.Fatalf("could not marshal list of records, %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(response)
 
 		// Get all stages for a pipeline id
 	} else {
@@ -94,6 +123,8 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 			log.Fatalf("Error executing query: %q", err)
 		}
 		defer rows.Close()
+
+		var stageRecords []StageRecord
 
 		for rows.Next() {
 			var pipelineId string
@@ -105,12 +136,28 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 				log.Fatalf("Error scanning rows: %q", err)
 			}
 			fmt.Printf("ID: %s, Name: %s, message: %s, status: %s\n", pipelineId, name, message, status)
+
+			r := StageRecord{
+				PipelineId: pipelineId,
+				Name:       name,
+				Message:    message,
+				Status:     status,
+			}
+
+			stageRecords = append(stageRecords, r)
 		}
 
 		err = rows.Err()
 		if err != nil {
 			log.Fatalf("Error: %q", err)
 		}
+
+		response, err := json.Marshal(stageRecords)
+		if err != nil {
+			log.Fatalf("could not marshal list of records, %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(response)
 	}
 }
 

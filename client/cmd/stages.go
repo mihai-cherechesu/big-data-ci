@@ -17,7 +17,9 @@ package cmd
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 
 	"github.com/spf13/cobra"
 )
@@ -25,36 +27,28 @@ import (
 // stagesCmd represents the stages command
 var stagesCmd = &cobra.Command{
 	Use:   "stages",
-	Short: "Lists the stages for all pipelines.",
+	Short: "Lists the stages for a specific pipeline.",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("stages called")
+		id, _ := cmd.Flags().GetString("id")
 
-		db := initConn()
-
-		rows, err := db.Query("SELECT * FROM stages s INNER JOIN pipelines p ON s.pipeline_id = p.id WHERE p.user_id = $1", "")
+		resp, err := http.Get("http://localhost:8081/pipeline/" + id)
 		if err != nil {
-			log.Fatalf("Error executing query: %q", err)
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var id int
-			var name string
-			err = rows.Scan(&id, &name)
-			if err != nil {
-				log.Fatalf("Error scanning rows: %q", err)
-			}
-			fmt.Printf("ID: %d, Name: %s\n", id, name)
+			log.Fatalln(err)
 		}
 
-		err = rows.Err()
+		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Fatalf("Error: %q", err)
+			log.Fatalln(err)
 		}
+
+		sb := string(body)
+		log.Printf("Response body %s\n", sb)
 	},
 }
 
 func init() {
 	lsCmd.AddCommand(stagesCmd)
+	stagesCmd.PersistentFlags().StringP("id", "i", "", "The id of the pipeline to be queried.")
 }
