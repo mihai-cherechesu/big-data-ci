@@ -16,7 +16,7 @@ var (
 	scheduler   *internal.Scheduler
 )
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func handleExecute(w http.ResponseWriter, r *http.Request) {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		http.Error(w, "could not parse remote address, %v", http.StatusInternalServerError)
@@ -56,7 +56,9 @@ func main() {
 	redisClient = internal.InitRedisClient()
 	scheduler = internal.NewScheduler(20)
 
-	http.HandleFunc("/execute", handler)
+	http.HandleFunc("/execute", handleExecute)
+	// http.HandleFunc("/pipelines", handlePipelines)
+	// http.HandleFunc("/pipelines/", handleStages)
 
 	err := http.ListenAndServe(":8081", nil)
 	if err != nil {

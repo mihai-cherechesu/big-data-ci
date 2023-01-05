@@ -10,7 +10,6 @@ import (
 	"log"
 	"os"
 	"time"
-	"unicode"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -179,13 +178,10 @@ func runStage(stage string, pipelineName string, meta StageMeta, docker *client.
 			panic(err)
 		}
 
-		// log.Printf("outBytes before trim: %v\n", outBytes)
-		// outBytes = bytes.ReplaceAll(outBytes, []byte{'\x00'}, []byte{})
-		// log.Printf("outBytes after trim: %v\n", outBytes)
+		log.Printf("outBytes before trim: %v\n", outBytes)
+		outBytes = bytes.ReplaceAll(outBytes, []byte{'\x00', '\x01', '\x02', '\x03', '\x04', '\x05', '\x06', '\x07', '\x08', '\x09', '\x0A', '\x0B', '\x0C', '\x0D', '\x0E', '\x0F', '\x10', '\x11', '\x12', '\x13', '\x14', '\x15', '\x16', '\x17', '\x18', '\x19', '\x1A', '\x1B', '\x1C', '\x1D', '\x1E', '\x1F', '\x20', '\x7F'}, []byte{})
+		log.Printf("outBytes after trim: %v\n", outBytes)
 
-		outBytes = bytes.TrimFunc(outBytes, func(r rune) bool {
-			return !unicode.IsGraphic(r)
-		})
 		outBuffer := string(outBytes)
 
 		log.Printf("outBuffer %s\n", outBuffer)
