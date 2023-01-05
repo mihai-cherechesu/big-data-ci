@@ -2,10 +2,13 @@ package main
 
 import (
 	"controller/internal"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/go-redis/redis"
 	"github.com/gorilla/schema"
@@ -14,6 +17,7 @@ import (
 var (
 	redisClient *redis.Client
 	scheduler   *internal.Scheduler
+	dbClient    *sql.DB
 )
 
 func handleExecute(w http.ResponseWriter, r *http.Request) {
@@ -52,13 +56,71 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 	scheduler.Schedule(p, ip)
 }
 
+func handlePipelines(w http.ResponseWriter, r *http.Request) {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		http.Error(w, "could not parse remote address, %v", http.StatusInternalServerError)
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/pipelines/")
+
+	if id == "" {
+		rows, err := dbClient.Query("SELECT * FROM pipelines WHERE user_id = $1", ip)
+		if err != nil {
+			log.Fatalf("Error executing query: %q", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var id string
+			var userId string
+			err = rows.Scan(&id, &userId)
+			if err != nil {
+				log.Fatalf("Error scanning rows: %q", err)
+			}
+			fmt.Printf("ID: %s, Name: %s\n", id, userId)
+		}
+
+		err = rows.Err()
+		if err != nil {
+			log.Fatalf("Error: %q", err)
+		}
+
+		// Get all stages for a pipeline id
+	} else {
+		rows, err := dbClient.Query("SELECT s.pipeline_id, s.name, s.message, s.status FROM stages s INNER JOIN pipelines p ON p.id = s.pipeline_id WHERE p.user_id = $1 AND p.id = $2", ip, id)
+		if err != nil {
+			log.Fatalf("Error executing query: %q", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var pipelineId string
+			var name string
+			var message string
+			var status string
+			err = rows.Scan(&pipelineId, &name, &message, &status)
+			if err != nil {
+				log.Fatalf("Error scanning rows: %q", err)
+			}
+			fmt.Printf("ID: %s, Name: %s, message: %s, status: %s\n", pipelineId, name, message, status)
+		}
+
+		err = rows.Err()
+		if err != nil {
+			log.Fatalf("Error: %q", err)
+		}
+	}
+}
+
 func main() {
 	redisClient = internal.InitRedisClient()
 	scheduler = internal.NewScheduler(20)
+	dbClient = internal.InitDBConn()
 
 	http.HandleFunc("/execute", handleExecute)
-	// http.HandleFunc("/pipelines", handlePipelines)
-	// http.HandleFunc("/pipelines/", handleStages)
+	http.HandleFunc("/pipelines/", handlePipelines)
 
 	err := http.ListenAndServe(":8081", nil)
 	if err != nil {

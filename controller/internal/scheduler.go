@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -19,14 +18,6 @@ import (
 	"database/sql"
 
 	_ "github.com/lib/pq"
-)
-
-const (
-	host     = "postgres"
-	port     = 5432
-	user     = "postgres"
-	password = "postgres"
-	dbname   = "big-data-ci"
 )
 
 // A struct that represents the core scheduler for the CI system.
@@ -101,26 +92,12 @@ func NewScheduler(maxContainers int) *Scheduler {
 		log.Fatalf("could not create docker client, %v", err)
 	}
 
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
-		"password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
-
-	db, err := sql.Open("postgres", psqlInfo)
-	if err != nil {
-		log.Fatalf("Error opening database: %q", err)
-	}
-
-	err = db.Ping()
-	if err != nil {
-		log.Fatalf("Error pinging database: %q", err)
-	}
-
-	fmt.Println("Successfully connected to database!")
+	dbClient := InitDBConn()
 
 	s := &Scheduler{
 		maxContainers: maxContainers,
 		docker:        docker,
-		db:            db,
+		db:            dbClient,
 	}
 
 	return s
