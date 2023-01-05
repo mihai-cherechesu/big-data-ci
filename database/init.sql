@@ -1,4 +1,12 @@
-CREATE TABLE users (
-  id serial PRIMARY KEY,
-  name VARCHAR (255) NOT NULL
+CREATE TABLE pipelines (
+  id VARCHAR (255) PRIMARY KEY NOT NULL,
+  user_id VARCHAR(255)
+);
+
+CREATE TABLE stages (
+    id SERIAL PRIMARY KEY,
+    pipeline_id VARCHAR(255) REFERENCES pipelines(id),
+    name VARCHAR(255),
+    message VARCHAR(255),
+    status VARCHAR(8) CHECK (status IN ('SUCCESS', 'PENDING', 'FAILED'))
 );

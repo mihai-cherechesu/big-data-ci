@@ -2,8 +2,10 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"time"
@@ -58,6 +60,12 @@ type Pipeline struct {
 
 	// Allow for any Stages keys
 	Stages map[string]StageMeta `json:"stages"`
+}
+
+type StageOutput struct {
+	Name    string
+	Message string
+	Status  int64
 }
 
 // Used to create an enum for the state of stages
@@ -119,12 +127,7 @@ func NewScheduler(maxContainers int) *Scheduler {
 }
 
 // Function used by goroutines to run the pipeline stages
-func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan string) {
-	// rand.Seed(time.Now().UnixNano())
-	// t := time.Duration(rand.Intn(6) + 5)
-
-	// log.Printf("sleep for %ds\n", t)
-	// time.Sleep(t * time.Second)
+func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan StageOutput) {
 	ctx := context.Background()
 
 	reader, err := docker.ImagePull(ctx, "docker.io/library/alpine", types.ImagePullOptions{})
@@ -163,19 +166,30 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan s
 		}
 	case status := <-statusCh:
 		log.Printf("received status code on wait channel %d\n", status.StatusCode)
+
+		// Write logs to STDOUT
+		out, err := docker.ContainerLogs(ctx, c.ID, types.ContainerLogsOptions{ShowStdout: true})
+		if err != nil {
+			panic(err)
+		}
+		stdcopy.StdCopy(os.Stdout, os.Stderr, out)
+
+		outBytes, err := ioutil.ReadAll(out)
+		if err != nil {
+			panic(err)
+		}
+		outBuffer := string(outBytes)
+
+		stageOut := StageOutput{
+			Name:    stage,
+			Message: outBuffer,
+			Status:  status.StatusCode,
+		}
+
+		// Send the stage name in the channel so the Scheduler can
+		// traverse the graph again and schedule new stages
+		doneCh <- stageOut
 	}
-
-	// Write logs to STDOUT
-	out, err := docker.ContainerLogs(ctx, c.ID, types.ContainerLogsOptions{ShowStdout: true})
-	if err != nil {
-		panic(err)
-	}
-
-	stdcopy.StdCopy(os.Stdout, os.Stderr, out)
-
-	// Send the stage name in the channel so the Scheduler can
-	// traverse the graph again and schedule new stages
-	doneCh <- stage
 }
 
 // Find next stages to run by traversing the stage layers.
@@ -224,35 +238,35 @@ func (s *Scheduler) checkAllFinished(states map[string]StageState) bool {
 	return true
 }
 
-func (s *Scheduler) Schedule(p Pipeline) error {
+func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 	p.Name = uuid.New().String()
 
-	_, err := s.db.Exec("INSERT INTO users (name) VALUES ($1)", "Alice")
+	_, err := s.db.Exec("INSERT INTO pipelines (id, user_id) VALUES ($1, $2)", p.Name, ip)
 	if err != nil {
 		log.Fatalf("Error executing query: %q", err)
 	}
 
-	rows, err := s.db.Query("SELECT id, name FROM users")
-	if err != nil {
-		log.Fatalf("Error executing query: %q", err)
-	}
+	// rows, err := s.db.Query("SELECT id, name FROM users")
+	// if err != nil {
+	// 	log.Fatalf("Error executing query: %q", err)
+	// }
 
-	defer rows.Close()
+	// defer rows.Close()
 
-	for rows.Next() {
-		var id int
-		var name string
-		err = rows.Scan(&id, &name)
-		if err != nil {
-			log.Fatalf("Error scanning rows: %q", err)
-		}
-		fmt.Printf("ID: %d, Name: %s\n", id, name)
-	}
+	// for rows.Next() {
+	// 	var id int
+	// 	var name string
+	// 	err = rows.Scan(&id, &name)
+	// 	if err != nil {
+	// 		log.Fatalf("Error scanning rows: %q", err)
+	// 	}
+	// 	fmt.Printf("ID: %d, Name: %s\n", id, name)
+	// }
 
-	err = rows.Err()
-	if err != nil {
-		log.Fatalf("Error: %q", err)
-	}
+	// err = rows.Err()
+	// if err != nil {
+	// 	log.Fatalf("Error: %q", err)
+	// }
 
 	g := NewGraphFromStages(p.Stages)
 	layers := g.TopoSortedLayers()
@@ -263,7 +277,7 @@ func (s *Scheduler) Schedule(p Pipeline) error {
 
 	// Create a channel to receive the stage names that finished
 	// Buffered with a maximum capacity of maxContainers
-	doneCh := make(chan string, s.maxContainers)
+	doneCh := make(chan StageOutput, s.maxContainers)
 
 	// Create a map to hold the stages that finished
 	states := make(map[string]StageState)
@@ -277,6 +291,11 @@ func (s *Scheduler) Schedule(p Pipeline) error {
 	// Number of existing stage layers
 	layersLen := len(layers)
 
+	// TODO: Check corner case with only 1 stage
+	////////////////////////////////////////////
+	////////////////////////////////////////////
+	////////////////////////////////////////////
+	////////////////////////////////////////////
 	if layersLen > 0 {
 		first = layers[0]
 	} else {
@@ -288,15 +307,38 @@ func (s *Scheduler) Schedule(p Pipeline) error {
 	for _, stage := range first {
 		log.Printf("starting stage %s\n", stage)
 		states[stage] = Running
+
+		_, err := s.db.Exec("INSERT INTO stages (pipeline_id, name, status) VALUES ($1, $2, $3)", p.Name, stage, "RUNNING")
+		if err != nil {
+			log.Fatalf("Error executing query: %q", err)
+		}
+
 		go runStage(stage, p.Stages[stage], s.docker, doneCh)
 	}
 
 	for {
 		select {
-		case stage := <-doneCh:
-			log.Printf("stage %s is done\n", stage)
+		case stageOutput := <-doneCh:
+			log.Printf("stage %s is done with status %d\n", stageOutput.Name, stageOutput.Status)
+
+			if stageOutput.Status != 0 {
+				log.Printf("stage %s is failed, aborting pipeline\n", stageOutput.Name)
+
+				_, err := s.db.Exec("UPDATE stages SET status = $1, message = $2 WHERE pipeline_id = $3 AND name = $4", "FAILED", stageOutput.Message, p.Name, stageOutput.Name)
+				if err != nil {
+					log.Fatalf("Error executing query: %q", err)
+				}
+
+				return errors.New("ABORT")
+			}
+
 			// Mark the stage as done, so that the stage won't run again
-			states[stage] = Finished
+			states[stageOutput.Name] = Finished
+
+			_, err := s.db.Exec("UPDATE stages SET status = $1, message = $2 WHERE pipeline_id = $3 AND name = $4", "SUCCESS", stageOutput.Message, p.Name, stageOutput.Name)
+			if err != nil {
+				log.Fatalf("Error executing query: %q", err)
+			}
 
 			// Check if all stages finished
 			if s.checkAllFinished(states) {
@@ -315,6 +357,12 @@ func (s *Scheduler) Schedule(p Pipeline) error {
 				// Run the next stages and set their status to Running
 				for _, n := range nextStages {
 					states[n] = Running
+
+					_, err := s.db.Exec("INSERT INTO stages (pipeline_id, name, status) VALUES ($1, $2, $3)", p.Name, stageOutput.Name, "RUNNING")
+					if err != nil {
+						log.Fatalf("Error executing query: %q", err)
+					}
+
 					go runStage(n, p.Stages[n], s.docker, doneCh)
 				}
 			}
