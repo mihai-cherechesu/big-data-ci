@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"time"
+	"unicode"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -127,7 +128,7 @@ func NewScheduler(maxContainers int) *Scheduler {
 }
 
 // Function used by goroutines to run the pipeline stages
-func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan StageOutput) {
+func runStage(stage string, pipelineName string, meta StageMeta, docker *client.Client, doneCh chan StageOutput) {
 	ctx := context.Background()
 
 	reader, err := docker.ImagePull(ctx, "docker.io/library/alpine", types.ImagePullOptions{})
@@ -142,7 +143,7 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan S
 		Image: "alpine",
 		Cmd:   meta.Script,
 		Tty:   false,
-	}, nil, nil, nil, stage)
+	}, nil, nil, nil, pipelineName+"-"+stage)
 
 	// Remove the container, similar to the flag --rm passed to docker run
 	defer docker.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{})
@@ -178,11 +179,15 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan S
 			panic(err)
 		}
 
-		log.Printf("outBytes before trim: %v\n", outBytes)
-		outBytes = bytes.ReplaceAll(outBytes, []byte{'\x00'}, []byte{})
-		log.Printf("outBytes after trim: %v\n", outBytes)
+		// log.Printf("outBytes before trim: %v\n", outBytes)
+		// outBytes = bytes.ReplaceAll(outBytes, []byte{'\x00'}, []byte{})
+		// log.Printf("outBytes after trim: %v\n", outBytes)
 
+		outBytes = bytes.TrimFunc(outBytes, func(r rune) bool {
+			return !unicode.IsGraphic(r)
+		})
 		outBuffer := string(outBytes)
+
 		log.Printf("outBuffer %s\n", outBuffer)
 
 		stageOut := StageOutput{
@@ -300,7 +305,7 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 			log.Fatalf("Error executing query: %q", err)
 		}
 
-		go runStage(stage, p.Stages[stage], s.docker, doneCh)
+		go runStage(stage, p.Name, p.Stages[stage], s.docker, doneCh)
 	}
 
 	for {
@@ -350,7 +355,7 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 						log.Fatalf("Error executing query: %q", err)
 					}
 
-					go runStage(n, p.Stages[n], s.docker, doneCh)
+					go runStage(n, p.Name, p.Stages[n], s.docker, doneCh)
 				}
 			}
 
