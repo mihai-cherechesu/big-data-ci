@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -176,6 +177,7 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan S
 		if err != nil {
 			panic(err)
 		}
+		outBytes = bytes.Trim(outBytes, "\x00")
 		outBuffer := string(outBytes)
 		log.Printf("outBuffer %s\n", outBuffer)
 
