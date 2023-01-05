@@ -177,7 +177,11 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan S
 		if err != nil {
 			panic(err)
 		}
-		outBytes = bytes.Trim(outBytes, "\x00")
+
+		log.Printf("outBytes before trim: %v\n", outBytes)
+		outBytes = bytes.ReplaceAll(outBytes, []byte{'\x00'}, []byte{})
+		log.Printf("outBytes after trim: %v\n", outBytes)
+
 		outBuffer := string(outBytes)
 		log.Printf("outBuffer %s\n", outBuffer)
 
