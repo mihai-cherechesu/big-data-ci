@@ -8,6 +8,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
       - DOCKER_API_VERSION=1.41
       - DOCKER_HOST=unix:///var/run/docker.sock
@@ -23,3 +25,13 @@ services:
       redis-server
         --save 60 1
         --loglevel warning
+  postgres:
+    image: postgres-big-data:latest
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=big-data-ci
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]

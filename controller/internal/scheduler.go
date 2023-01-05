@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -11,6 +12,19 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/google/uuid"
+
+	"database/sql"
+
+	_ "github.com/lib/pq"
+)
+
+const (
+	host     = "postgres"
+	port     = 5432
+	user     = "postgres"
+	password = "postgres"
+	dbname   = "big-data-ci"
 )
 
 // A struct that represents the core scheduler for the CI system.
@@ -20,6 +34,7 @@ import (
 type Scheduler struct {
 	maxContainers int
 	docker        *client.Client
+	db            *sql.DB
 }
 
 // Metadata for each stage. Must be an object
@@ -37,6 +52,7 @@ type Pipeline struct {
 	// * This will allow the CLI to inspect the current running pipelines (e.g. cili pipelines ls)
 	// * On each pipeline run, lookup redis to check if ip already has a pipeline with similar name
 	// * This also adds unicity to the containers (not sure if they can be created with the same name, check ContainerCreate)
+	Name string
 
 	Image string `json:"image" schema:"image"`
 
@@ -77,9 +93,26 @@ func NewScheduler(maxContainers int) *Scheduler {
 		log.Fatalf("could not create docker client, %v", err)
 	}
 
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+		"password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
+
+	db, err := sql.Open("postgres", psqlInfo)
+	if err != nil {
+		log.Fatalf("Error opening database: %q", err)
+	}
+
+	err = db.Ping()
+	if err != nil {
+		log.Fatalf("Error pinging database: %q", err)
+	}
+
+	fmt.Println("Successfully connected to database!")
+
 	s := &Scheduler{
 		maxContainers: maxContainers,
 		docker:        docker,
+		db:            db,
 	}
 
 	return s
@@ -192,18 +225,33 @@ func (s *Scheduler) checkAllFinished(states map[string]StageState) bool {
 }
 
 func (s *Scheduler) Schedule(p Pipeline) error {
-	docker, err := client.NewClientWithOpts(client.FromEnv)
+	p.Name = uuid.New().String()
+
+	_, err := s.db.Exec("INSERT INTO users (name) VALUES ($1)", "Alice")
 	if err != nil {
-		log.Fatalf("could not create docker client, %v", err)
+		log.Fatalf("Error executing query: %q", err)
 	}
 
-	containers, err := docker.ContainerList(context.Background(), types.ContainerListOptions{})
+	rows, err := s.db.Query("SELECT id, name FROM users")
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error executing query: %q", err)
 	}
 
-	for _, container := range containers {
-		log.Printf("%s %s\n", container.ID[:10], container.Image)
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int
+		var name string
+		err = rows.Scan(&id, &name)
+		if err != nil {
+			log.Fatalf("Error scanning rows: %q", err)
+		}
+		fmt.Printf("ID: %d, Name: %s\n", id, name)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		log.Fatalf("Error: %q", err)
 	}
 
 	g := NewGraphFromStages(p.Stages)
@@ -252,7 +300,6 @@ func (s *Scheduler) Schedule(p Pipeline) error {
 
 			// Check if all stages finished
 			if s.checkAllFinished(states) {
-				docker.Close()
 				log.Printf("pipeline finished successfully, closing the client\n")
 				return nil
 			}
