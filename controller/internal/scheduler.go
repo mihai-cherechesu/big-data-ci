@@ -246,28 +246,6 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 		log.Fatalf("Error executing query: %q", err)
 	}
 
-	// rows, err := s.db.Query("SELECT id, name FROM users")
-	// if err != nil {
-	// 	log.Fatalf("Error executing query: %q", err)
-	// }
-
-	// defer rows.Close()
-
-	// for rows.Next() {
-	// 	var id int
-	// 	var name string
-	// 	err = rows.Scan(&id, &name)
-	// 	if err != nil {
-	// 		log.Fatalf("Error scanning rows: %q", err)
-	// 	}
-	// 	fmt.Printf("ID: %d, Name: %s\n", id, name)
-	// }
-
-	// err = rows.Err()
-	// if err != nil {
-	// 	log.Fatalf("Error: %q", err)
-	// }
-
 	g := NewGraphFromStages(p.Stages)
 	layers := g.TopoSortedLayers()
 
@@ -291,13 +269,17 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 	// Number of existing stage layers
 	layersLen := len(layers)
 
-	// TODO: Check corner case with only 1 stage
-	////////////////////////////////////////////
-	////////////////////////////////////////////
-	////////////////////////////////////////////
-	////////////////////////////////////////////
 	if layersLen > 0 {
 		first = layers[0]
+
+		// Case when the pipeline has only one stage
+	} else if len(p.Stages) == 1 {
+		first = make([]string, 1)
+		for k := range p.Stages {
+			first[0] = k
+		}
+
+		// Case when the pipeline has no stages
 	} else {
 		log.Fatal("there are no stage layers, recheck your pipeline\n")
 	}
@@ -358,7 +340,7 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 				for _, n := range nextStages {
 					states[n] = Running
 
-					_, err := s.db.Exec("INSERT INTO stages (pipeline_id, name, status) VALUES ($1, $2, $3)", p.Name, stageOutput.Name, "RUNNING")
+					_, err := s.db.Exec("INSERT INTO stages (pipeline_id, name, status) VALUES ($1, $2, $3)", p.Name, n, "RUNNING")
 					if err != nil {
 						log.Fatalf("Error executing query: %q", err)
 					}
