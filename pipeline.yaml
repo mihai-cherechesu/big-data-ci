@@ -1,0 +1,19 @@
+image: "image"
+stages:
+  build:
+    script: |
+      echo build1
+      echo build2
+  test1:
+    script: |
+      echo test1
+      mv a b
+    depends_on:
+      - build
+  test2:
+    script: |
+      echo test2
+      mv c d
+    depends_on:
+      - build
+      - test1

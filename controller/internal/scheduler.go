@@ -181,8 +181,6 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan S
 		outBuffer := string(outBytes)
 		log.Printf("outBuffer %s\n", outBuffer)
 
-		// stdcopy.StdCopy(os.Stdout, os.Stderr, out)
-
 		stageOut := StageOutput{
 			Name:    stage,
 			Message: outBuffer,
