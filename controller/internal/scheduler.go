@@ -13,7 +13,6 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/google/uuid"
 
 	"database/sql"
@@ -168,17 +167,19 @@ func runStage(stage string, meta StageMeta, docker *client.Client, doneCh chan S
 		log.Printf("received status code on wait channel %d\n", status.StatusCode)
 
 		// Write logs to STDOUT
-		out, err := docker.ContainerLogs(ctx, c.ID, types.ContainerLogsOptions{ShowStdout: true})
+		out, err := docker.ContainerLogs(ctx, c.ID, types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true})
 		if err != nil {
 			panic(err)
 		}
-		stdcopy.StdCopy(os.Stdout, os.Stderr, out)
 
 		outBytes, err := ioutil.ReadAll(out)
 		if err != nil {
 			panic(err)
 		}
 		outBuffer := string(outBytes)
+		log.Printf("outBuffer %s\n", outBuffer)
+
+		// stdcopy.StdCopy(os.Stdout, os.Stderr, out)
 
 		stageOut := StageOutput{
 			Name:    stage,
