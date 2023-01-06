@@ -16,6 +16,8 @@ limitations under the License.
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -45,8 +47,13 @@ var stagesCmd = &cobra.Command{
 			log.Fatalln(err)
 		}
 
-		sb := string(body)
-		log.Printf("%s\n", sb)
+		var indentedBody bytes.Buffer
+		err = json.Indent(&indentedBody, []byte(string(body)), "", "\t")
+		if err != nil {
+			log.Fatalf("could not indent body json, %v", err)
+		}
+
+		log.Printf("%s\n", &indentedBody)
 	},
 }
 

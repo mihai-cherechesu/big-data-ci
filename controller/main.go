@@ -134,18 +134,28 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 			var message string
 			var status string
 			var artifactUrls pq.StringArray
+
 			err = rows.Scan(&pipelineId, &name, &message, &status, &artifactUrls)
 			if err != nil {
 				log.Fatalf("Error scanning rows: %q", err)
 			}
-			fmt.Printf("ID: %s, Name: %s, message: %s, status: %s, artifact_urls: %s\n", pipelineId, name, message, status, []string(artifactUrls))
+
+			// Filter evil urls?
+			urls := []string(artifactUrls)
+			for i, u := range urls {
+				if len(u) < 80 {
+					urls = append(urls[:i], urls[i+1:]...)
+				}
+			}
+
+			fmt.Printf("ID: %s, Name: %s, message: %s, status: %s, artifact_urls: %s\n", pipelineId, name, message, status, urls)
 
 			r := StageRecord{
 				PipelineId:   pipelineId,
 				Name:         name,
 				Message:      message,
 				Status:       status,
-				ArtifactUrls: []string(artifactUrls),
+				ArtifactUrls: urls,
 			}
 
 			stageRecords = append(stageRecords, r)
