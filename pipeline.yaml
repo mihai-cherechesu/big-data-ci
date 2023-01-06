@@ -1,19 +1,28 @@
-image: "image"
+image: "paravirtualtishu/base"
 stages:
   build:
     script: |
-      echo build1
-      echo build2
+      echo "Output from build"
+      which gcc
+      git clone https://github.com/blackbird71SR/Hello-World.git
+      cd Hello-World
+      gcc HelloWorld.c -o HelloWorld.out
+      ./HelloWorld.out
+    artifacts:
+      - HelloWorld.out
   test1:
     script: |
       echo test1
-      mv a b
+      which javac
     depends_on:
-      - build
+      - stage: build
+        artifacts: false
   test2:
     script: |
       echo test2
-      mv c d
+      ls -lart HelloWorld.out
+      ./HelloWorld.out
     depends_on:
-      - build
-      - test1
+      - stage: build
+        artifacts: true
+      - stage: test1

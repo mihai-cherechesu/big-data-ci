@@ -163,8 +163,8 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	redisClient = internal.InitRedisClient()
-	scheduler = internal.NewScheduler(20)
 	dbClient = internal.InitDBConn()
+	scheduler = internal.NewScheduler(20, dbClient)
 
 	http.HandleFunc("/execute", handleExecute)
 	http.HandleFunc("/pipelines/", handlePipelines)

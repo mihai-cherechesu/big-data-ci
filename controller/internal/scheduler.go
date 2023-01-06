@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -22,19 +23,24 @@ import (
 // A struct that represents the core scheduler for the CI system.
 // Configurations:
 // * maxContainers tells the scheduler the maximum number of running containers at a point in time.
-// * TBD
 type Scheduler struct {
 	maxContainers int
 	docker        *client.Client
 	db            *sql.DB
 }
 
+// A struct to represent the elements from the depends_on list
+type DependsOnMeta struct {
+	Stage          string `json:"stage"`
+	FetchArtifacts bool   `json:"artifacts"`
+}
+
 // Metadata for each stage. Must be an object
 // with the keys "script", "depends_on", and "artifacts"
 type StageMeta struct {
-	Script    []string `json:"script"`
-	DependsOn []string `json:"depends_on"`
-	Artifacts []string `json:"artifacts"`
+	Script    []string        `json:"script"`
+	DependsOn []DependsOnMeta `json:"depends_on"`
+	Artifacts []string        `json:"artifacts"`
 }
 
 // A struct to represent the JSON schema
@@ -53,9 +59,10 @@ type Pipeline struct {
 }
 
 type StageOutput struct {
-	Name    string
-	Message string
-	Status  int64
+	Name        string
+	Message     string
+	Status      int64
+	ContainerId string
 }
 
 // Used to create an enum for the state of stages
@@ -76,7 +83,7 @@ func NewGraphFromStages(stages map[string]StageMeta) *Graph {
 
 	for k, v := range stages {
 		for _, dep := range v.DependsOn {
-			g.DependOn(k, dep)
+			g.DependOn(k, dep.Stage)
 		}
 	}
 
@@ -85,13 +92,11 @@ func NewGraphFromStages(stages map[string]StageMeta) *Graph {
 
 // Creates a new Scheduler struct with configurations.
 // Adds a new docker client to the new Scheduler struct
-func NewScheduler(maxContainers int) *Scheduler {
+func NewScheduler(maxContainers int, dbClient *sql.DB) *Scheduler {
 	docker, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
 		log.Fatalf("could not create docker client, %v", err)
 	}
-
-	dbClient := InitDBConn()
 
 	s := &Scheduler{
 		maxContainers: maxContainers,
@@ -103,10 +108,29 @@ func NewScheduler(maxContainers int) *Scheduler {
 }
 
 // Function used by goroutines to run the pipeline stages
-func runStage(stage string, pipelineName string, meta StageMeta, docker *client.Client, doneCh chan StageOutput) {
+func runStage(stage string, pipeline Pipeline, stageToContainerId map[string]string, docker *client.Client, doneCh chan StageOutput) {
 	ctx := context.Background()
+	meta, ok := pipeline.Stages[stage]
+	if !ok {
+		log.Fatalf("cannot run stage %s\n", stage)
+	}
 
-	reader, err := docker.ImagePull(ctx, "docker.io/library/alpine", types.ImagePullOptions{})
+	imageFQDN := strings.Split(pipeline.Image, "/")
+	var registry, image string
+
+	if len(imageFQDN) == 2 {
+		registry = imageFQDN[0]
+		image = imageFQDN[1]
+
+	} else if len(imageFQDN) == 1 {
+		registry = "library"
+		image = imageFQDN[0]
+
+	} else {
+		log.Fatalf("image has wrong format, %s\n", imageFQDN)
+	}
+
+	reader, err := docker.ImagePull(ctx, "docker.io/"+registry+"/"+image, types.ImagePullOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -115,19 +139,22 @@ func runStage(stage string, pipelineName string, meta StageMeta, docker *client.
 	io.Copy(os.Stdout, reader)
 
 	c, err := docker.ContainerCreate(ctx, &container.Config{
-		Image: "alpine",
+		Image: pipeline.Image,
 		Cmd:   meta.Script,
 		Tty:   false,
-	}, nil, nil, nil, pipelineName+"-"+stage)
-
-	// Remove the container, similar to the flag --rm passed to docker run
-	defer docker.ContainerRemove(ctx, c.ID, types.ContainerRemoveOptions{})
+	}, nil, nil, nil, pipeline.Name+"-"+stage)
 
 	if err != nil {
 		log.Fatalf("could not create container for stage %s, %v\n", stage, err)
 	}
 
-	log.Printf("id for the %s container %s\n", stage, c.ID)
+	for _, d := range meta.DependsOn {
+		if d.FetchArtifacts {
+			for _, f := range pipeline.Stages[d.Stage].Artifacts {
+				CopyFromContainerToContainer(docker, stageToContainerId[d.Stage], f, c.ID, "./")
+			}
+		}
+	}
 
 	err = docker.ContainerStart(ctx, c.ID, types.ContainerStartOptions{})
 	if err != nil {
@@ -143,6 +170,13 @@ func runStage(stage string, pipelineName string, meta StageMeta, docker *client.
 	case status := <-statusCh:
 		log.Printf("received status code on wait channel %d\n", status.StatusCode)
 
+		// Send all artifacts to S3 only if the stage finished successfully
+		if status.StatusCode == 0 {
+			for _, f := range meta.Artifacts {
+				UploadArtifactsFromContainer(docker, pipeline.Name, stage, c.ID, f)
+			}
+		}
+
 		// Write logs to STDOUT
 		out, err := docker.ContainerLogs(ctx, c.ID, types.ContainerLogsOptions{ShowStdout: true, ShowStderr: true})
 		if err != nil {
@@ -154,18 +188,11 @@ func runStage(stage string, pipelineName string, meta StageMeta, docker *client.
 			panic(err)
 		}
 
-		log.Printf("outBytes before trim: %v\n", outBytes)
-		outBytes = ReplaceControlBytes(outBytes)
-		log.Printf("outBytes after trim: %v\n", outBytes)
-
-		outBuffer := string(outBytes)
-
-		log.Printf("outBuffer %s\n", outBuffer)
-
 		stageOut := StageOutput{
-			Name:    stage,
-			Message: outBuffer,
-			Status:  status.StatusCode,
+			Name:        stage,
+			Message:     string(ReplaceControlBytes(outBytes)),
+			Status:      status.StatusCode,
+			ContainerId: c.ID,
 		}
 
 		// Send the stage name in the channel so the Scheduler can
@@ -193,7 +220,7 @@ func (s *Scheduler) findNextStages(p Pipeline, states map[string]StageState, lay
 			for _, dep := range p.Stages[stage].DependsOn {
 				// If any stage dependency is in either NotRunning or Running states,
 				// the stage is not considered in the next run
-				if states[dep] == Running || states[dep] == NotRunning {
+				if states[dep.Stage] == Running || states[dep.Stage] == NotRunning {
 					allDone = false
 					break
 				}
@@ -221,6 +248,7 @@ func (s *Scheduler) checkAllFinished(states map[string]StageState) bool {
 }
 
 func (s *Scheduler) Schedule(p Pipeline, ip string) error {
+	stageToContainerId := make(map[string]string)
 	p.Name = uuid.New().String()
 
 	_, err := s.db.Exec("INSERT INTO pipelines (id, user_id) VALUES ($1, $2)", p.Name, ip)
@@ -277,13 +305,14 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 			log.Fatalf("Error executing query: %q", err)
 		}
 
-		go runStage(stage, p.Name, p.Stages[stage], s.docker, doneCh)
+		go runStage(stage, p, stageToContainerId, s.docker, doneCh)
 	}
 
 	for {
 		select {
 		case stageOutput := <-doneCh:
-			log.Printf("stage %s is done with status %d\n", stageOutput.Name, stageOutput.Status)
+			stageToContainerId[stageOutput.Name] = stageOutput.ContainerId
+			log.Printf("stage %s is done with status %d and container %s\n", stageOutput.Name, stageOutput.Status, stageOutput.ContainerId)
 
 			if stageOutput.Status != 0 {
 				log.Printf("stage %s is failed, aborting pipeline\n", stageOutput.Name)
@@ -307,6 +336,11 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 			// Check if all stages finished
 			if s.checkAllFinished(states) {
 				log.Printf("pipeline finished successfully, closing the client\n")
+
+				// Remove the containers
+				for _, v := range stageToContainerId {
+					s.docker.ContainerRemove(context.Background(), v, types.ContainerRemoveOptions{})
+				}
 				return nil
 			}
 
@@ -327,7 +361,7 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 						log.Fatalf("Error executing query: %q", err)
 					}
 
-					go runStage(n, p.Name, p.Stages[n], s.docker, doneCh)
+					go runStage(n, p, stageToContainerId, s.docker, doneCh)
 				}
 			}
 
