@@ -29,7 +29,7 @@ type PipelineRecord struct {
 type StageRecord struct {
 	PipelineId   string
 	Name         string
-	Message      string
+	Messages     []string
 	Status       string
 	ArtifactUrls []string
 }
@@ -148,12 +148,12 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			fmt.Printf("ID: %s, Name: %s, message: %s, status: %s, artifact_urls: %s\n", pipelineId, name, message, status, urls)
+			messages := strings.Split(strings.Trim(message, "\n"), "\n")
 
 			r := StageRecord{
 				PipelineId:   pipelineId,
 				Name:         name,
-				Message:      message,
+				Messages:     messages,
 				Status:       status,
 				ArtifactUrls: urls,
 			}
