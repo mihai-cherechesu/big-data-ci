@@ -46,7 +46,7 @@ var stagesCmd = &cobra.Command{
 		}
 
 		sb := string(body)
-		log.Printf("Response body %s\n", sb)
+		log.Printf("%s\n", sb)
 	},
 }
 

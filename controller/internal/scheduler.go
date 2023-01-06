@@ -17,6 +17,7 @@ import (
 
 	"database/sql"
 
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
 
@@ -59,10 +60,11 @@ type Pipeline struct {
 }
 
 type StageOutput struct {
-	Name        string
-	Message     string
-	Status      int64
-	ContainerId string
+	Name         string
+	Message      string
+	Status       int64
+	ContainerId  string
+	ArtifactUrls []string
 }
 
 // Used to create an enum for the state of stages
@@ -169,11 +171,13 @@ func runStage(stage string, pipeline Pipeline, stageToContainerId map[string]str
 		}
 	case status := <-statusCh:
 		log.Printf("received status code on wait channel %d\n", status.StatusCode)
+		artifactUrls := make([]string, len(meta.Artifacts))
 
 		// Send all artifacts to S3 only if the stage finished successfully
 		if status.StatusCode == 0 {
 			for _, f := range meta.Artifacts {
-				UploadArtifactsFromContainer(docker, pipeline.Name, stage, c.ID, f)
+				log.Printf("uploading artifact %s to S3\n", f)
+				artifactUrls = append(artifactUrls, UploadArtifactFromContainer(docker, pipeline.Name, stage, c.ID, f))
 			}
 		}
 
@@ -189,10 +193,11 @@ func runStage(stage string, pipeline Pipeline, stageToContainerId map[string]str
 		}
 
 		stageOut := StageOutput{
-			Name:        stage,
-			Message:     string(ReplaceControlBytes(outBytes)),
-			Status:      status.StatusCode,
-			ContainerId: c.ID,
+			Name:         stage,
+			Message:      string(ReplaceControlBytes(outBytes)),
+			Status:       status.StatusCode,
+			ContainerId:  c.ID,
+			ArtifactUrls: artifactUrls,
 		}
 
 		// Send the stage name in the channel so the Scheduler can
@@ -300,7 +305,8 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 		log.Printf("starting stage %s\n", stage)
 		states[stage] = Running
 
-		_, err := s.db.Exec("INSERT INTO stages (pipeline_id, name, status) VALUES ($1, $2, $3)", p.Name, stage, "RUNNING")
+		_, err := s.db.Exec("INSERT INTO stages (pipeline_id, name, status) VALUES ($1, $2, $3)",
+			p.Name, stage, "RUNNING")
 		if err != nil {
 			log.Fatalf("Error executing query: %q", err)
 		}
@@ -317,7 +323,8 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 			if stageOutput.Status != 0 {
 				log.Printf("stage %s is failed, aborting pipeline\n", stageOutput.Name)
 
-				_, err := s.db.Exec("UPDATE stages SET status = $1, message = $2 WHERE pipeline_id = $3 AND name = $4", "FAILED", stageOutput.Message, p.Name, stageOutput.Name)
+				_, err := s.db.Exec("UPDATE stages SET status = $1, message = $2 WHERE pipeline_id = $3 AND name = $4",
+					"FAILED", stageOutput.Message, p.Name, stageOutput.Name)
 				if err != nil {
 					log.Fatalf("Error executing query: %q", err)
 				}
@@ -328,7 +335,10 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 			// Mark the stage as done, so that the stage won't run again
 			states[stageOutput.Name] = Finished
 
-			_, err := s.db.Exec("UPDATE stages SET status = $1, message = $2 WHERE pipeline_id = $3 AND name = $4", "SUCCESS", stageOutput.Message, p.Name, stageOutput.Name)
+			psqlArr := pq.Array(stageOutput.ArtifactUrls)
+
+			_, err := s.db.Exec("UPDATE stages SET status = $1, message = $2, artifact_urls = $3 WHERE pipeline_id = $4 AND name = $5",
+				"SUCCESS", stageOutput.Message, psqlArr, p.Name, stageOutput.Name)
 			if err != nil {
 				log.Fatalf("Error executing query: %q", err)
 			}
@@ -356,7 +366,8 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 				for _, n := range nextStages {
 					states[n] = Running
 
-					_, err := s.db.Exec("INSERT INTO stages (pipeline_id, name, status) VALUES ($1, $2, $3)", p.Name, n, "RUNNING")
+					_, err := s.db.Exec("INSERT INTO stages (pipeline_id, name, status) VALUES ($1, $2, $3)",
+						p.Name, n, "RUNNING")
 					if err != nil {
 						log.Fatalf("Error executing query: %q", err)
 					}

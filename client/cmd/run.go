@@ -89,7 +89,7 @@ func runPipeline(file string) {
 		log.Fatalln(err)
 	}
 
-	fmt.Printf("resp: %s\n", respBody)
+	fmt.Printf("resp with body %s with status %d\n", respBody, resp.StatusCode)
 }
 
 func init() {

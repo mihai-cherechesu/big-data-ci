@@ -8,6 +8,7 @@ stages:
       cd Hello-World
       gcc HelloWorld.c -o HelloWorld.out
       ./HelloWorld.out
+      mv HelloWorld.out ..
     artifacts:
       - HelloWorld.out
   test1:

@@ -8,5 +8,6 @@ CREATE TABLE stages (
     pipeline_id VARCHAR(255) REFERENCES pipelines(id),
     name VARCHAR(255),
     message VARCHAR(255),
-    status VARCHAR(16) CHECK (status IN ('SUCCESS', 'PENDING', 'RUNNING', 'FAILED'))
+    status VARCHAR(16) CHECK (status IN ('SUCCESS', 'PENDING', 'RUNNING', 'FAILED')),
+    artifact_urls TEXT[]
 );

@@ -32,7 +32,7 @@ func CopyFromContainerToContainer(docker *client.Client, srcContainerID string, 
 	}
 }
 
-func UploadArtifactsFromContainer(docker *client.Client, pipelineName string, stageName string, srcContainerID string, srcPath string) {
+func UploadArtifactFromContainer(docker *client.Client, pipelineName string, stageName string, srcContainerID string, srcPath string) string {
 	// Set the S3 bucket and destination path
 	bucket := "big-data-ci"
 	dstPath := pipelineName + "/" + stageName + "/artifacts/"
@@ -69,6 +69,5 @@ func UploadArtifactsFromContainer(docker *client.Client, pipelineName string, st
 		log.Fatal(err)
 	}
 
-	// Print the result
-	log.Printf("The URL for the artifact: %s\n", result.Location)
+	return result.Location
 }

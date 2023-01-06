@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-redis/redis"
 	"github.com/gorilla/schema"
+	"github.com/lib/pq"
 )
 
 var (
@@ -26,10 +27,11 @@ type PipelineRecord struct {
 }
 
 type StageRecord struct {
-	PipelineId string
-	Name       string
-	Message    string
-	Status     string
+	PipelineId   string
+	Name         string
+	Message      string
+	Status       string
+	ArtifactUrls []string
 }
 
 func handleExecute(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +120,7 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 
 		// Get all stages for a pipeline id
 	} else {
-		rows, err := dbClient.Query("SELECT s.pipeline_id, s.name, s.message, s.status FROM stages s INNER JOIN pipelines p ON p.id = s.pipeline_id WHERE p.user_id = $1 AND p.id = $2", ip, id)
+		rows, err := dbClient.Query("SELECT s.pipeline_id, s.name, s.message, s.status, s.artifact_urls FROM stages s INNER JOIN pipelines p ON p.id = s.pipeline_id WHERE p.user_id = $1 AND p.id = $2", ip, id)
 		if err != nil {
 			log.Fatalf("Error executing query: %q", err)
 		}
@@ -131,17 +133,19 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 			var name string
 			var message string
 			var status string
-			err = rows.Scan(&pipelineId, &name, &message, &status)
+			var artifactUrls pq.StringArray
+			err = rows.Scan(&pipelineId, &name, &message, &status, &artifactUrls)
 			if err != nil {
 				log.Fatalf("Error scanning rows: %q", err)
 			}
-			fmt.Printf("ID: %s, Name: %s, message: %s, status: %s\n", pipelineId, name, message, status)
+			fmt.Printf("ID: %s, Name: %s, message: %s, status: %s, artifact_urls: %s\n", pipelineId, name, message, status, []string(artifactUrls))
 
 			r := StageRecord{
-				PipelineId: pipelineId,
-				Name:       name,
-				Message:    message,
-				Status:     status,
+				PipelineId:   pipelineId,
+				Name:         name,
+				Message:      message,
+				Status:       status,
+				ArtifactUrls: []string(artifactUrls),
 			}
 
 			stageRecords = append(stageRecords, r)
