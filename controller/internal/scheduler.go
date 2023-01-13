@@ -329,7 +329,7 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 			log.Printf("stage %s is done with status %d and container %s\n", stageOutput.Name, stageOutput.Status, stageOutput.ContainerId)
 
 			if stageOutput.Status != 0 {
-				log.Printf("stage %s is failed, aborting pipeline\n", stageOutput.Name)
+				log.Printf("stage %s is failed with message %s, aborting pipeline\n", stageOutput.Name, stageOutput.Message)
 
 				_, err := s.db.Exec("UPDATE stages SET status = $1, message = $2 WHERE pipeline_id = $3 AND name = $4",
 					"FAILED", stageOutput.Message, p.Name, stageOutput.Name)
