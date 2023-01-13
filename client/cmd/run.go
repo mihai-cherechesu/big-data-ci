@@ -65,7 +65,7 @@ func runPipeline(file string) {
 
 		script = strings.TrimSuffix(script, "\n")
 		cmds := strings.Split(script, "\n")
-		joined := strings.Join(cmds, "; ")
+		joined := strings.Join(cmds, " && ")
 		final := []string{"/bin/sh", "-c", joined}
 
 		stage.(map[string]interface{})["script"] = final

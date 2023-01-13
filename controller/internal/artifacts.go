@@ -8,6 +8,7 @@ import (
 	"github.com/docker/docker/client"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 )
@@ -38,7 +39,8 @@ func UploadArtifactFromContainer(docker *client.Client, pipelineName string, sta
 
 	// Create a new AWS session
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String("eu-central-1"),
+		Region:      aws.String("eu-central-1"),
+		Credentials: credentials.NewEnvCredentials(),
 	})
 	if err != nil {
 		log.Fatal(err)
