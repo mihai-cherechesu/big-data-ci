@@ -214,7 +214,7 @@ func (s *Scheduler) findNextStages(p Pipeline, states map[string]StageState, lay
 	// The layers array is assured to have at least 2 elements
 	for i := 1; i < len(layers); i++ {
 		for _, stage := range layers[i] {
-			// Stages already running are skipped
+			// Stages already running are skippedDependsOn
 			if states[stage] == Running || states[stage] == Finished {
 				continue
 			}
@@ -256,7 +256,15 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 	stageToContainerId := make(map[string]string)
 	p.Name = uuid.New().String()
 
-	_, err := s.db.Exec("INSERT INTO pipelines (id, user_id) VALUES ($1, $2)", p.Name, ip)
+	// Build the data for the DAG and store it in database
+	var dependencies []interface{}
+	for stage, meta := range p.Stages {
+		for _, d := range meta.DependsOn {
+			dependencies = append(dependencies, pq.Array([]string{d.Stage, stage}))
+		}
+	}
+
+	_, err := s.db.Exec("INSERT INTO pipelines (id, user_id, dependencies) VALUES ($1, $2, $3)", p.Name, ip, pq.Array(dependencies))
 	if err != nil {
 		log.Fatalf("Error executing query: %q", err)
 	}

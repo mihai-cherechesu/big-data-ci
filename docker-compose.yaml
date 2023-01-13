@@ -35,3 +35,7 @@ services:
       - POSTGRES_DB=big-data-ci
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
+    volumes:
+      - postgres_vol:/var/lib/postgresql/data
+volumes:
+  postgres_vol:

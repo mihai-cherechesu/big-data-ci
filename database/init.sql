@@ -1,6 +1,7 @@
 CREATE TABLE pipelines (
   id VARCHAR (255) PRIMARY KEY NOT NULL,
-  user_id VARCHAR(255)
+  user_id VARCHAR(255),
+  dependencies TEXT[][]
 );
 
 CREATE TABLE stages (

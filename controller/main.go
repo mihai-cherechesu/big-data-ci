@@ -34,6 +34,12 @@ type StageRecord struct {
 	ArtifactUrls []string
 }
 
+type StageSubrecord struct {
+	PipelineId string
+	Name       string
+	Status     string
+}
+
 func handleExecute(w http.ResponseWriter, r *http.Request) {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -68,6 +74,71 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go scheduler.Schedule(p, ip)
+}
+
+func handleStages(w http.ResponseWriter, r *http.Request) {
+	var ids []string
+
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
+		// If there is an error parsing the request body, return a 400 response
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	q := "SELECT s.pipeline_id, s.name, s.status, FROM stages s INNER JOIN pipelines p ON p.id = s.pipeline_id WHERE p.id = ANY($1)"
+	rows, err := dbClient.Query(q, pq.Array(ids))
+	if err != nil {
+		log.Fatalf("Error executing query: %q", err)
+	}
+	defer rows.Close()
+
+	var stageSubrecords []StageSubrecord
+
+	for rows.Next() {
+		var pipelineId string
+		var name string
+		var status string
+
+		err = rows.Scan(&pipelineId, &name, &status)
+		if err != nil {
+			log.Fatalf("Error scanning rows: %q", err)
+		}
+
+		r := StageSubrecord{
+			PipelineId: pipelineId,
+			Name:       name,
+			Status:     status,
+		}
+
+		stageSubrecords = append(stageSubrecords, r)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		log.Fatalf("Error: %q", err)
+	}
+
+	formatted := make(map[string][]map[string]string)
+	for _, s := range stageSubrecords {
+		_, ok := formatted[s.PipelineId]
+		if !ok {
+			formatted[s.PipelineId] = make([]map[string]string, 0)
+		}
+
+		ns := map[string]string{
+			"name":   s.Name,
+			"status": s.Status,
+		}
+
+		formatted[s.PipelineId] = append(formatted[s.PipelineId], ns)
+	}
+
+	response, err := json.Marshal(formatted)
+	if err != nil {
+		log.Fatalf("could not marshal list of records, %v", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(response)
 }
 
 func handlePipelines(w http.ResponseWriter, r *http.Request) {
@@ -182,6 +253,7 @@ func main() {
 
 	http.HandleFunc("/execute", handleExecute)
 	http.HandleFunc("/pipelines/", handlePipelines)
+	http.HandleFunc("/stages", handleStages)
 
 	err := http.ListenAndServe(":8081", nil)
 	if err != nil {
