@@ -1,0 +1,8 @@
+{
+  "name": "socket_server",
+  "version": "0.0.1",
+  "description": "Used for real-time pipeline svg updates",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

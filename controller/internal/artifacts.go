@@ -2,9 +2,7 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"os"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
@@ -39,16 +37,12 @@ func UploadArtifactFromContainer(docker *client.Client, pipelineName string, sta
 	bucket := "big-data-ci"
 	dstPath := pipelineName + "/" + stageName + "/artifacts/"
 
-	dirname, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("The homedir: %s\n", dirname)
+	accessKey, secretKey, region := GetAWSCreds()
 
 	// Create a new AWS session
 	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String("eu-central-1"),
-		Credentials: credentials.NewStaticCredentials(os.Getenv("AWS_ACCESS_KEY_ID"), os.Getenv("AWS_SECRET_ACCESS_KEY"), ""),
+		Region:      aws.String(region),
+		Credentials: credentials.NewStaticCredentials(accessKey, secretKey, ""),
 	})
 	if err != nil {
 		log.Fatal(err)

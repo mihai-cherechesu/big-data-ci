@@ -37,5 +37,20 @@ services:
       test: ["CMD-SHELL", "pg_isready"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
+  vault:
+    image: vault:latest
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: curl -I --silent http://127.0.0.1:8200/v1/sys/health | grep "HTTP/1.1 200 OK"
+    environment:
+      VAULT_LOCAL_CONFIG: '{"api_addr": "http://0.0.0.0:8200", "storage": {"file": {"path": "/vault/file"}}, "listener": [{"tcp": { "address": "0.0.0.0:8200", "tls_disable": true}}], "default_lease_ttl": "168h", "max_lease_ttl": "720h", "ui": true}'
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vault_data:/vault/file
+    command: server
+
 volumes:
   postgres_data:
+  vault_data:
