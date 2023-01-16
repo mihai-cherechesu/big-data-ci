@@ -34,7 +34,7 @@ func CopyFromContainerToContainer(docker *client.Client, srcContainerID string, 
 
 func UploadArtifactFromContainer(docker *client.Client, pipelineName string, stageName string, srcContainerID string, srcPath string) string {
 	// Set the S3 bucket and destination path
-	bucket := "big-data-ci"
+	bucket := "big-data-artifacts"
 	dstPath := pipelineName + "/" + stageName + "/artifacts/"
 
 	accessKey, secretKey, region := GetAWSCreds()

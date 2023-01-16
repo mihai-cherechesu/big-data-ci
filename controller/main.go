@@ -22,8 +22,9 @@ var (
 )
 
 type PipelineRecord struct {
-	Id     string
-	UserId string
+	Id           string
+	UserId       string
+	Dependencies [][]string
 }
 
 type StageRecord struct {
@@ -85,7 +86,7 @@ func handleStages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q := "SELECT s.pipeline_id, s.name, s.status, FROM stages s INNER JOIN pipelines p ON p.id = s.pipeline_id WHERE p.id = ANY($1)"
+	q := "SELECT s.pipeline_id, s.name, s.status FROM stages s INNER JOIN pipelines p ON p.id = s.pipeline_id WHERE p.id = ANY($1::text[])"
 	rows, err := dbClient.Query(q, pq.Array(ids))
 	if err != nil {
 		log.Fatalf("Error executing query: %q", err)
@@ -162,16 +163,26 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var id string
 			var userId string
+			var deps [][]string
 
-			err = rows.Scan(&id, &userId)
+			err = rows.Scan(&id, &userId, &deps)
 			if err != nil {
 				log.Fatalf("Error scanning rows: %q", err)
 			}
 			fmt.Printf("ID: %s, Name: %s\n", id, userId)
 
+			for _, i := range deps {
+				for _, j := range i {
+					fmt.Printf("%s ", j)
+				}
+			}
+
+			fmt.Println("\n")
+
 			r := PipelineRecord{
-				Id:     id,
-				UserId: userId,
+				Id:           id,
+				UserId:       userId,
+				Dependencies: deps,
 			}
 
 			pipelineRecords = append(pipelineRecords, r)

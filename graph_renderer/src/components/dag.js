@@ -24,7 +24,9 @@ class Dag extends Component {
   }
 
   drawDag() {
-    d3.selectAll("svg").remove()
+    const pipelineData = this.props.pipelineData;
+    const stagesData = this.props.stagesData;
+    d3.selectAll("svg").remove();
 
     const dagData = this.props.data;
     const dag = d3d.dagConnect()(dagData);

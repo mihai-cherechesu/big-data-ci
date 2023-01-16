@@ -9,14 +9,14 @@ import (
 
 func GetAWSCreds() (string, string, string) {
 	config := vault.DefaultConfig()
-	config.Address = "vault:8200"
+	config.Address = "http://vault:8200"
 
 	client, err := vault.NewClient(config)
 	if err != nil {
 		log.Fatalf("Unable to initialize a Vault client: %v", err)
 	}
 
-	client.SetToken("hvs.GkC7nnE6QvOlAOe9upm3Yn1k")
+	client.SetToken("hvs.LmVCy2Qd3wUxMsD6IBzByCFQ")
 
 	secret, err := client.KVv2("kv").Get(context.Background(), "aws/credentials")
 	if err != nil {
@@ -53,6 +53,5 @@ func GetAWSCreds() (string, string, string) {
 		)
 	}
 
-	log.Printf("AWS secrets check: .\n", accessKey[:3], secretKey[:3], region[:3])
 	return accessKey, secretKey, region
 }
