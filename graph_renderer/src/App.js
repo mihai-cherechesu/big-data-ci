@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './App.css';
 import Dag from './components/dag';
 
@@ -15,38 +15,70 @@ const statusColors = {
 };
 
 function App() {
-  const dagData = [
-    ["1", "2"],
-    ["1", "5"],
-    ["1", "7"],
-    ["2", "3"],
-    ["2", "4"],
-    ["2", "5"],
-    ["2", "7"],
-    ["2", "8"],
-    ["3", "6"],
-    ["3", "8"],
-    ["4", "7"],
-    ["5", "7"],
-    ["5", "8"],
-    ["5", "9"],
-    ["6", "8"],
-    ["7", "8"],
-    ["9", "10"],
-    ["9", "11"]
-  ]
 
-  const [pipelines, setPipelines] = useState([]);
-  const [stages, setStages] = useState([]);
+  const [pipelines, setPipelines] = useState();
+  const [stages, setStages] = useState();
 
-  fetch("http://localhost:8081/pipelines/")
-    .then(r => r.json)
-    .then(data => setPipelines(data));
+  // const dagData = [
+  //   ["1", "2"],
+  //   ["1", "5"],
+  //   ["1", "7"],
+  //   ["2", "3"],
+  //   ["2", "4"],
+  //   ["2", "5"],
+  //   ["2", "7"],
+  //   ["2", "8"],
+  //   ["3", "6"],
+  //   ["3", "8"],
+  //   ["4", "7"],
+  //   ["5", "7"],
+  //   ["5", "8"],
+  //   ["5", "9"],
+  //   ["6", "8"],
+  //   ["7", "8"],
+  //   ["9", "10"],
+  //   ["9", "11"]
+  // ]
 
+  useEffect(() => {
+    // fetch data
+    const dataFetch = async () => {
+      const pipelinesData = await (
+        await fetch(
+          "http://localhost:8081/pipelines/"
+        )
+      ).json();
+
+      // set state when the data received
+      setPipelines(pipelinesData);
+      console.log("Received pipelines: " + pipelinesData)
+
+      const requestHeaders = new Headers();
+      requestHeaders.append('Content-Type', 'application/json');
   
-  fetch("http://localhost:8081/stages")
-    .then(r => r.json)
-    .then(data => setStages(data));
+      let pipelineIds = pipelinesData.map(v => v.Id)
+      console.log("Received pipelineIds: " + pipelineIds)
+  
+      const requestOptions = {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify(pipelineIds)
+      };
+
+      const stagesData = await (
+        await fetch(
+          "http://localhost:8081/stages",
+          requestOptions
+        )
+      ).json();
+      
+      // set state when the data received
+      setStages(stagesData);
+      console.log("Received stages: " + stagesData)
+    };
+
+    dataFetch();
+  }, []);  
 
   // TODOs
   // Fetch data correctly, check it
@@ -57,33 +89,38 @@ function App() {
   // On event change, use the update function to update the svg
 
   return (
-    <table>
-      <thead>
-        <tr>
-          <th>Status</th>
-          <th>Pipeline ID</th>
-          <th>Triggerer</th>
-          <th>Stages</th>
-        </tr>
-      </thead>
-      <tbody>
-        {pipelines.map(pipeline => (
-          <tr key={pipeline.id}>
-            <td>
-              <div 
-                className="status-indicator"
-                style={{ backgroundColor: statusColors[getPipelineState(stages[pipeline.id])] }}
-              >
-                {getPipelineState(stages[pipeline.id])}
-              </div>
-            </td>
-            <td>{pipeline.id}</td>
-            <td>Triggerer</td>
-            <td><Dag pipelineData={pipeline} stagesData={stages} /></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div>Hello</div>
+    // <table>
+    //   <thead>
+    //     <tr>
+    //       <th>Status</th>
+    //       <th>Pipeline ID</th>
+    //       <th>Triggerer</th>
+    //       <th>Stages</th>
+    //     </tr>
+    //   </thead>
+    //   <tbody>
+    //     {pipelines.map(pipeline => (
+    //       <tr key={pipeline.id}>
+    //         {/* <td>
+    //           <div 
+    //             className="status-indicator"
+    //             style={{ backgroundColor: statusColors[getPipelineState(stages[pipeline.id])] }}
+    //           >
+    //             {getPipelineState(stages[pipeline.id])}
+    //           </div>
+    //         </td>
+    //         <td>{pipeline.id}</td>
+    //         <td>Triggerer</td>
+    //         <td><Dag pipelineData={pipeline} stagesData={stages} /></td> */}
+    //         <td>Status</td>
+    //         <td>ID</td>
+    //         <td>Triggerer</td>
+    //         <td>Stages</td>
+    //       </tr>
+    //     ))}
+    //   </tbody>
+    // </table>
   );
 }
 

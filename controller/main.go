@@ -41,7 +41,14 @@ type StageSubrecord struct {
 	Status     string
 }
 
+func enableCors(w *http.ResponseWriter) {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+	(*w).Header().Set("Access-Control-Allow-Methods", "*")
+}
+
 func handleExecute(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		http.Error(w, "could not parse remote address, %v", http.StatusInternalServerError)
@@ -78,6 +85,7 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleStages(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
 	var ids []string
 
 	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil {
@@ -143,6 +151,7 @@ func handleStages(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePipelines(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		http.Error(w, "could not parse remote address, %v", http.StatusInternalServerError)
