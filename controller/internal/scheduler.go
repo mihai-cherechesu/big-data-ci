@@ -257,10 +257,10 @@ func (s *Scheduler) Schedule(p Pipeline, ip string) error {
 	p.Name = uuid.New().String()
 
 	// Build the data for the DAG and store it in database
-	var dependencies []interface{}
+	var dependencies [][]string
 	for stage, meta := range p.Stages {
 		for _, d := range meta.DependsOn {
-			dependencies = append(dependencies, pq.Array([]string{d.Stage, stage}))
+			dependencies = append(dependencies, []string{d.Stage, stage})
 		}
 	}
 

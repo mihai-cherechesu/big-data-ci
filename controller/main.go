@@ -152,7 +152,7 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/pipelines/")
 
 	if id == "" {
-		rows, err := dbClient.Query("SELECT * FROM pipelines WHERE user_id = $1", ip)
+		rows, err := dbClient.Query("SELECT id, user_id, to_json(dependencies) FROM pipelines WHERE user_id = $1", ip)
 		if err != nil {
 			log.Fatalf("Error executing query: %q", err)
 		}
@@ -163,26 +163,21 @@ func handlePipelines(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var id string
 			var userId string
-			var deps [][]string
+			var deps []byte
 
 			err = rows.Scan(&id, &userId, &deps)
 			if err != nil {
 				log.Fatalf("Error scanning rows: %q", err)
 			}
-			fmt.Printf("ID: %s, Name: %s\n", id, userId)
+			fmt.Printf("ID: %s, Name: %s, Deps: %s\n", id, userId, string(deps[:]))
 
-			for _, i := range deps {
-				for _, j := range i {
-					fmt.Printf("%s ", j)
-				}
-			}
-
-			fmt.Println("\n")
+			var biArray [][]string
+			json.Unmarshal(deps, &biArray)
 
 			r := PipelineRecord{
 				Id:           id,
 				UserId:       userId,
-				Dependencies: deps,
+				Dependencies: biArray,
 			}
 
 			pipelineRecords = append(pipelineRecords, r)
