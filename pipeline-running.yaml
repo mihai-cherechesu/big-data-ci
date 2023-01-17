@@ -1,0 +1,32 @@
+image: "paravirtualtishu/base"
+stages:
+  build:
+    script: |
+      echo "Output from build"
+      which gcc
+      git clone https://github.com/blackbird71SR/Hello-World.git
+      cd Hello-World
+      gcc HelloWorld.c -o HelloWorld.out
+      ./HelloWorld.out
+      mv HelloWorld.out ..
+      sleep 20
+    artifacts:
+      - HelloWorld.out
+  test1:
+    script: |
+      echo test1
+      which javac
+      sleep 10
+    depends_on:
+      - stage: build
+        artifacts: false
+  test2:
+    script: |
+      echo test2
+      ls -lart HelloWorld.out
+      ./HelloWorld.out
+      sleep 15
+    depends_on:
+      - stage: build
+        artifacts: true
+      - stage: test1

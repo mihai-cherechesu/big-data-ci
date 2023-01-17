@@ -1,0 +1,48 @@
+image: "paravirtualtishu/base"
+stages:
+  build1:
+    script: |
+      echo "Output from build1"
+      sleep 5
+  build2:
+    script: |
+      echo "Output from build2"
+      sleep 15
+  coverage:
+    script: |
+      echo "Output from coverage"
+      sleep 10
+  test1:
+    script: |
+      echo test1
+      sleep 10
+    depends_on:
+      - stage: build1
+        artifacts: false
+  test2:
+    script: |
+      echo test2
+      sleep 10
+    depends_on:
+      - stage: build1
+  test3:
+    script: |
+      echo test3
+      sleep 5
+    depends_on:
+      - stage: build2
+      - stage: coverage
+  package:
+    script: |
+      echo package
+      sleep 5
+    depends_on:
+      - stage: test3
+      - stage: test2
+      - stage: test1
+  deploy:
+    script: |
+      echo deploy
+      sleep 20
+    depends_on:
+      - stage: package
