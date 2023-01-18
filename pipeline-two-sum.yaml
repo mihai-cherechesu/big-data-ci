@@ -1,0 +1,39 @@
+image: "paravirtualtishu/base"
+stages:
+  build-c:
+    script: |
+      git clone https://github.com/MihaiCherechesu/big-data-ci.git
+      cd big-data-ci/two_sum_example/c
+      gcc two_sum.c -o two_sum.out
+      ./two_sum.out > two_sum_c.out
+      mv two_sum_c.out /
+    artifacts:
+      - two_sum_c.out
+  build-python:
+    script: |
+      git clone https://github.com/MihaiCherechesu/big-data-ci.git
+      cd big-data-ci/two_sum_example/python
+      python two_sum.py > two_sum_python.out
+      mv two_sum_python.out /
+    artifacts:
+      - two_sum_python.out
+  build-java:
+    script: |
+      git clone https://github.com/MihaiCherechesu/big-data-ci.git
+      cd big-data-ci/two_sum_example/java
+      javac two_sum.java
+      java TwoSum > two_sum_java.out
+      mv two_sum_java.out /
+    artifacts:
+      - two_sum_java.out
+  compare:
+    script: |
+      echo compare
+      diff3 two_sum_python.out two_sum_java.out two_sum_c.out 
+    depends_on:
+      - stage: build-c
+        artifacts: true
+      - stage: build-python
+        artifacts: true
+      - stage: build-java
+        artifacts: true
